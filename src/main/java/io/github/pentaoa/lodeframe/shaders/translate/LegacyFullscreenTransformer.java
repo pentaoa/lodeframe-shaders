@@ -16,6 +16,9 @@ public final class LegacyFullscreenTransformer {
     private static final Pattern SCALAR_UNIFORM = Pattern.compile(
             "(?m)^[ \\t]*uniform[ \\t]+(float|int|uint|bool|vec[234]|ivec[234]|uvec[234]|mat[234])[ \\t]+([^;]+);[ \\t]*(?://[^\\r\\n]*)?"
     );
+    private static final Pattern SAMPLER_UNIFORM = Pattern.compile(
+            "(?m)^[ \\t]*uniform[ \\t]+([iu]?sampler[A-Za-z0-9_]*)[ \\t]+([^;]+);[ \\t]*(?://[^\\r\\n]*)?"
+    );
     private static final Pattern FRAGMENT_DATA = Pattern.compile("\\bgl_FragData\\s*\\[\\s*(\\d+)\\s*]");
 
     private LegacyFullscreenTransformer() {
@@ -44,6 +47,7 @@ public final class LegacyFullscreenTransformer {
 
         UniformExtraction uniforms = extractScalarUniforms(transformed);
         transformed = uniforms.source();
+        List<SamplerField> samplers = extractSamplers(transformed);
 
         StringBuilder compatibility = new StringBuilder();
         compatibility.append("\n#ifndef MC_VERSION\n#define MC_VERSION 12602\n#endif\n");
@@ -86,7 +90,7 @@ public final class LegacyFullscreenTransformer {
         String result = transformed.substring(0, version.end())
                 + compatibility
                 + transformed.substring(version.end());
-        return new TransformedShader(result, uniforms.fields());
+        return new TransformedShader(result, uniforms.fields(), samplers, fragmentOutputs.locations());
     }
 
     public static String uniformBlockName(final ShaderStage stage) {
@@ -141,13 +145,40 @@ public final class LegacyFullscreenTransformer {
         return new FragmentOutputs(result.toString(), Set.copyOf(locations));
     }
 
-    public record TransformedShader(String source, List<UniformField> uniforms) {
+    private static List<SamplerField> extractSamplers(final String source) {
+        Matcher matcher = SAMPLER_UNIFORM.matcher(source);
+        List<SamplerField> samplers = new ArrayList<>();
+        while (matcher.find()) {
+            String type = matcher.group(1);
+            for (String declaration : matcher.group(2).split(",")) {
+                String name = declaration.strip();
+                int array = name.indexOf('[');
+                if (array >= 0) {
+                    name = name.substring(0, array).strip();
+                }
+                samplers.add(new SamplerField(type, name));
+            }
+        }
+        return List.copyOf(samplers);
+    }
+
+    public record TransformedShader(
+            String source,
+            List<UniformField> uniforms,
+            List<SamplerField> samplers,
+            Set<Integer> fragmentOutputLocations
+    ) {
         public TransformedShader {
             uniforms = List.copyOf(uniforms);
+            samplers = List.copyOf(samplers);
+            fragmentOutputLocations = Set.copyOf(fragmentOutputLocations);
         }
     }
 
     public record UniformField(String type, String name) {
+    }
+
+    public record SamplerField(String type, String name) {
     }
 
     private record UniformExtraction(String source, List<UniformField> fields) {

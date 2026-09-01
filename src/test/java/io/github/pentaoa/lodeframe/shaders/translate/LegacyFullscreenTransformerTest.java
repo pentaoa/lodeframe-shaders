@@ -4,6 +4,7 @@ import io.github.pentaoa.lodeframe.shaders.pack.ShaderStage;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -50,9 +51,36 @@ final class LegacyFullscreenTransformerTest {
         assertTrue(transformed.contains("float viewWidth;"));
         assertTrue(transformed.contains("float viewHeight;"));
         assertTrue(result.uniforms().contains(new LegacyFullscreenTransformer.UniformField("float", "viewWidth")));
+        assertEquals(
+                new LegacyFullscreenTransformer.SamplerField("sampler2D", "colortex1"),
+                result.samplers().getFirst()
+        );
+        assertEquals(java.util.Set.of(0), result.fragmentOutputLocations());
         assertTrue(transformed.contains("textureLod(colortex1"));
         assertFalse(transformed.contains("GL_ARB_shader_texture_lod"));
         assertFalse(transformed.contains("gl_FragColor"));
+    }
+
+    @Test
+    void describesSamplerListsAndArrays() {
+        LegacyFullscreenTransformer.TransformedShader result = LegacyFullscreenTransformer.transformDetailed(
+                ShaderStage.FRAGMENT,
+                """
+                        #version 120
+                        uniform sampler2D colortex0, colortex1;
+                        uniform sampler2DShadow shadowtex[2];
+                        void main() { gl_FragColor = texture2D(colortex0, vec2(0.0)); }
+                        """
+        );
+
+        assertEquals(
+                java.util.List.of(
+                        new LegacyFullscreenTransformer.SamplerField("sampler2D", "colortex0"),
+                        new LegacyFullscreenTransformer.SamplerField("sampler2D", "colortex1"),
+                        new LegacyFullscreenTransformer.SamplerField("sampler2DShadow", "shadowtex")
+                ),
+                result.samplers()
+        );
     }
 
     @Test
