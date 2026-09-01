@@ -5,7 +5,7 @@ import java.util.List;
 
 public record ShaderPackRequirements(
         boolean legacyGlsl,
-        boolean drawBuffers,
+        boolean renderTargetRouting,
         boolean computeShaders,
         boolean geometryShaders,
         boolean customUniforms,
@@ -16,7 +16,7 @@ public record ShaderPackRequirements(
     public List<String> descriptions() {
         List<String> result = new ArrayList<>();
         if (legacyGlsl) result.add("legacy GLSL compatibility transforms");
-        if (drawBuffers) result.add("DRAWBUFFERS attachment routing");
+        if (renderTargetRouting) result.add("MRT attachment routing");
         if (computeShaders) result.add("compute shader stages");
         if (geometryShaders) result.add("geometry shader stages");
         if (customUniforms) result.add("custom uniform expressions");

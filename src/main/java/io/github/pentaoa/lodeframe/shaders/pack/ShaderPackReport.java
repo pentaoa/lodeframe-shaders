@@ -9,6 +9,7 @@ public record ShaderPackReport(
         String source,
         Set<String> dimensions,
         List<ShaderEntry> stageEntries,
+        List<ShaderProgram> programs,
         int programCount,
         Map<ShaderStage, Integer> stageCounts,
         int resolvedStageCount,

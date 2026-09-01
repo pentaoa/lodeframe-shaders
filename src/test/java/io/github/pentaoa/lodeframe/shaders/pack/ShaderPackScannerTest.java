@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -52,8 +53,9 @@ final class ShaderPackScannerTest {
             assertEquals(List.of("120"), List.copyOf(report.glslVersions()));
             assertTrue(report.dimensions().contains("world0"));
             assertTrue(report.requirements().legacyGlsl());
-            assertTrue(report.requirements().drawBuffers());
+            assertTrue(report.requirements().renderTargetRouting());
             assertTrue(report.requirements().customUniforms());
+            assertEquals(List.of(0), report.programs().getFirst().directives().renderTargetCandidates().getFirst().buffers());
         }
     }
 
@@ -106,6 +108,31 @@ final class ShaderPackScannerTest {
             assertEquals(0, report.resolvedStageCount());
             assertEquals("final.fsh", report.diagnostics().getFirst().path());
             assertTrue(report.diagnostics().getFirst().message().contains("Missing include"));
+        }
+    }
+
+    @Test
+    void groupsStagesAndOrdersProgramsByTheIrisExecutionSequence() throws Exception {
+        Path packDirectory = temporaryDirectory.resolve("Program Order");
+        write(packDirectory.resolve("shaders/world0/composite2.vsh"), "#version 330\nvoid main() {}\n");
+        write(packDirectory.resolve("shaders/world0/composite2.fsh"), "#version 330\nvoid main() {}\n");
+        write(packDirectory.resolve("shaders/world0/final.vsh"), "#version 330\nvoid main() {}\n");
+        write(packDirectory.resolve("shaders/world0/final.fsh"), "#version 330\nvoid main() {}\n");
+        write(packDirectory.resolve("shaders/world0/deferred1.vsh"), "#version 330\nvoid main() {}\n");
+        write(packDirectory.resolve("shaders/world0/deferred1.fsh"), "#version 330\nvoid main() {}\n");
+        write(packDirectory.resolve("shaders/world0/composite.vsh"), "#version 330\nvoid main() {}\n");
+        write(packDirectory.resolve("shaders/world0/composite.fsh"), "#version 330\nvoid main() {}\n");
+
+        try (ShaderPack pack = ShaderPack.open(packDirectory)) {
+            ShaderPackReport report = new ShaderPackScanner().scan(pack);
+
+            assertEquals(List.of("deferred1", "composite", "composite2", "final"), report.programs().stream()
+                    .map(ShaderProgram::name)
+                    .toList());
+            assertEquals(4, report.programCount());
+            assertEquals(Set.of(ShaderStage.VERTEX, ShaderStage.FRAGMENT), report.programs().getFirst().stages().keySet());
+            assertEquals(ShaderProgramType.DEFERRED, report.programs().getFirst().type());
+            assertEquals(1, report.programs().getFirst().index());
         }
     }
 

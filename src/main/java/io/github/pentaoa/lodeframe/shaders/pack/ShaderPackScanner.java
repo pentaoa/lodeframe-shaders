@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -25,11 +27,9 @@ public final class ShaderPackScanner {
         List<ShaderEntry> entries = discoverEntries(pack);
         Map<ShaderStage, Integer> stageCounts = new EnumMap<>(ShaderStage.class);
         Set<String> dimensions = new TreeSet<>();
-        Set<String> programs = new LinkedHashSet<>();
         for (ShaderEntry entry : entries) {
             stageCounts.merge(entry.stage(), 1, Integer::sum);
             dimensions.add(entry.dimension());
-            programs.add(entry.programKey());
         }
 
         ShaderIncludeResolver resolver = new ShaderIncludeResolver(pack);
@@ -37,23 +37,27 @@ public final class ShaderPackScanner {
         Set<String> glslVersions = new TreeSet<>();
         int resolvedStages = 0;
         int includeEdges = 0;
-        boolean drawBuffers = false;
+        boolean renderTargetRouting = false;
         boolean legacyGlsl = false;
+        Map<String, ShaderDirectives> directivesByProgram = new LinkedHashMap<>();
 
         for (ShaderEntry entry : entries) {
             try {
                 ResolvedShader resolved = resolver.resolve(pack.path(entry.path()));
                 resolvedStages++;
                 includeEdges += resolved.dependencies().size();
-                drawBuffers |= resolved.source().contains("DRAWBUFFERS:");
-
                 Matcher versions = GLSL_VERSION.matcher(resolved.source());
                 while (versions.find()) {
                     String version = versions.group(1);
                     glslVersions.add(version);
                     legacyGlsl |= Integer.parseInt(version) < 330;
                 }
-            } catch (ShaderPackException exception) {
+                if (entry.stage() == ShaderStage.FRAGMENT) {
+                    ShaderDirectives directives = ShaderDirectiveParser.parse(resolved.source());
+                    directivesByProgram.put(entry.programKey(), directives);
+                    renderTargetRouting |= !directives.renderTargetCandidates().isEmpty();
+                }
+            } catch (ShaderPackException | IllegalArgumentException exception) {
                 diagnostics.add(new ShaderDiagnostic(
                         ShaderDiagnostic.Severity.ERROR,
                         entry.path(),
@@ -62,10 +66,12 @@ public final class ShaderPackScanner {
             }
         }
 
+        List<ShaderProgram> shaderPrograms = groupPrograms(entries, directivesByProgram);
+
         String properties = pack.readOptional("shaders.properties");
         ShaderPackRequirements requirements = new ShaderPackRequirements(
                 legacyGlsl,
-                drawBuffers,
+                renderTargetRouting,
                 stageCounts.getOrDefault(ShaderStage.COMPUTE, 0) > 0,
                 stageCounts.getOrDefault(ShaderStage.GEOMETRY, 0) > 0,
                 CUSTOM_UNIFORM.matcher(properties).find(),
@@ -79,7 +85,8 @@ public final class ShaderPackScanner {
                 pack.source().toString(),
                 Collections.unmodifiableSet(new LinkedHashSet<>(dimensions)),
                 List.copyOf(entries),
-                programs.size(),
+                shaderPrograms,
+                shaderPrograms.size(),
                 Map.copyOf(stageCounts),
                 resolvedStages,
                 includeEdges,
@@ -87,6 +94,37 @@ public final class ShaderPackScanner {
                 requirements,
                 List.copyOf(diagnostics)
         );
+    }
+
+    private static List<ShaderProgram> groupPrograms(
+            final List<ShaderEntry> entries,
+            final Map<String, ShaderDirectives> directivesByProgram
+    ) {
+        Map<String, EnumMap<ShaderStage, ShaderEntry>> grouped = new LinkedHashMap<>();
+        for (ShaderEntry entry : entries) {
+            grouped.computeIfAbsent(entry.programKey(), ignored -> new EnumMap<>(ShaderStage.class))
+                    .put(entry.stage(), entry);
+        }
+
+        List<ShaderProgram> programs = new ArrayList<>(grouped.size());
+        for (Map.Entry<String, EnumMap<ShaderStage, ShaderEntry>> groupedProgram : grouped.entrySet()) {
+            ShaderEntry first = groupedProgram.getValue().values().iterator().next();
+            ShaderProgramType.Classification classification = ShaderProgramType.classify(first.program());
+            programs.add(new ShaderProgram(
+                    first.dimension(),
+                    first.program(),
+                    classification.type(),
+                    classification.index(),
+                    groupedProgram.getValue(),
+                    directivesByProgram.getOrDefault(groupedProgram.getKey(), ShaderDirectives.empty())
+            ));
+        }
+        programs.sort(Comparator
+                .comparing(ShaderProgram::dimension)
+                .thenComparingInt(program -> program.type().executionOrder())
+                .thenComparingInt(ShaderProgram::index)
+                .thenComparing(ShaderProgram::name));
+        return List.copyOf(programs);
     }
 
     private List<ShaderEntry> discoverEntries(final ShaderPack pack) throws IOException {
