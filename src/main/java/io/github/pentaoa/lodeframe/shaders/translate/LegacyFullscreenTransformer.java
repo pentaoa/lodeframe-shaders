@@ -74,6 +74,9 @@ public final class LegacyFullscreenTransformer {
                     #define ftransform() lodeframeFullscreenPosition()
                     """);
         } else {
+            if (transformed.matches("(?s).*\\bshadow2D\\s*\\(.*")) {
+                compatibility.append("#define shadow2D(sampler, coord) vec4(texture(sampler, coord))\n");
+            }
             for (int location : fragmentOutputs.locations()) {
                 compatibility.append("layout(location = ")
                         .append(location)

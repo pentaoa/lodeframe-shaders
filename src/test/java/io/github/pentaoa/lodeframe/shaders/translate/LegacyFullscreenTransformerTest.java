@@ -84,6 +84,17 @@ final class LegacyFullscreenTransformerTest {
     }
 
     @Test
+    void preservesLegacyShadowComparisonVectorSemantics() {
+        String transformed = LegacyFullscreenTransformer.transform(ShaderStage.FRAGMENT, """
+                #version 120
+                uniform sampler2DShadow shadowtex0;
+                void main() { gl_FragColor = vec4(shadow2D(shadowtex0, vec3(0.5)).z); }
+                """);
+
+        assertTrue(transformed.contains("#define shadow2D(sampler, coord) vec4(texture(sampler, coord))"));
+    }
+
+    @Test
     void mapsLegacyFragmentDataIndicesToExplicitMrtOutputs() {
         String transformed = LegacyFullscreenTransformer.transform(ShaderStage.FRAGMENT, """
                 #version 120
