@@ -66,4 +66,23 @@ final class ShaderDirectiveParserTest {
         assertEquals(List.of(0, 1, 5), resolved.renderTargets().orElseThrow().buffers());
         assertFalse(resolved.source().contains("lodeframeRenderTargetsMarker"));
     }
+
+    @Test
+    void appliesTheLastSurvivingDirectiveLikeIrisAndOptifine() {
+        ShaderDirectiveParser.InstrumentedDirectives instrumented = ShaderDirectiveParser.instrumentRenderTargets("""
+                /* DRAWBUFFERS:01 */
+                #if FEATURE
+                /* DRAWBUFFERS:019 */
+                #endif
+                """);
+
+        ShaderDirectiveParser.ResolvedDirectives resolved = instrumented.resolve("""
+                const int lodeframeRenderTargetsMarker0 = 0;
+                const int lodeframeRenderTargetsMarker1 = 0;
+                void main() {}
+                """);
+
+        assertEquals(List.of(0, 1, 9), resolved.renderTargets().orElseThrow().buffers());
+        assertFalse(resolved.source().contains("lodeframeRenderTargetsMarker"));
+    }
 }

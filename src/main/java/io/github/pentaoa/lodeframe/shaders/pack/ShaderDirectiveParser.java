@@ -192,9 +192,8 @@ public final class ShaderDirectiveParser {
                 if (index < 0 || index >= this.candidates.size()) {
                     throw new IllegalArgumentException("Unknown render-target marker index: " + index);
                 }
-                if (active != null) {
-                    throw new IllegalArgumentException("More than one render-target directive is active after preprocessing");
-                }
+                // Iris and OptiFine apply the last surviving directive in source order. Packs such as
+                // BSL deliberately place a broad default first and a conditional override after it.
                 active = this.candidates.get(index);
                 matcher.appendReplacement(cleaned, "");
             }
