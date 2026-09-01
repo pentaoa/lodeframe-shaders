@@ -44,12 +44,28 @@ final class LegacyFullscreenTransformerTest {
                 """);
 
         assertTrue(transformed.contains("in vec2 texCoord"));
-        assertTrue(transformed.contains("layout(location = 0) out vec4 lodeframeFragColor"));
+        assertTrue(transformed.contains("layout(location = 0) out vec4 lodeframeFragData0"));
         assertTrue(transformed.contains("layout(std140) uniform LodeframeFullscreenUniforms"));
         assertTrue(transformed.contains("float viewWidth, viewHeight;"));
         assertTrue(transformed.contains("textureLod(colortex1"));
         assertFalse(transformed.contains("GL_ARB_shader_texture_lod"));
         assertFalse(transformed.contains("gl_FragColor"));
+    }
+
+    @Test
+    void mapsLegacyFragmentDataIndicesToExplicitMrtOutputs() {
+        String transformed = LegacyFullscreenTransformer.transform(ShaderStage.FRAGMENT, """
+                #version 120
+                void main() {
+                    gl_FragData[0] = vec4(1.0);
+                    gl_FragData[3] = vec4(0.5);
+                }
+                """);
+
+        assertTrue(transformed.contains("layout(location = 0) out vec4 lodeframeFragData0"));
+        assertTrue(transformed.contains("layout(location = 3) out vec4 lodeframeFragData3"));
+        assertTrue(transformed.contains("lodeframeFragData3 = vec4(0.5)"));
+        assertFalse(transformed.contains("gl_FragData"));
     }
 
     @Test

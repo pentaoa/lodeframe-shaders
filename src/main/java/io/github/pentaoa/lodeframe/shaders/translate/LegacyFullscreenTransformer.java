@@ -3,7 +3,9 @@ package io.github.pentaoa.lodeframe.shaders.translate;
 import io.github.pentaoa.lodeframe.shaders.pack.ShaderStage;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -14,6 +16,7 @@ public final class LegacyFullscreenTransformer {
     private static final Pattern SCALAR_UNIFORM = Pattern.compile(
             "(?m)^[ \\t]*uniform[ \\t]+(float|int|bool|vec[234]|ivec[234]|uvec[234]|mat[234])[ \\t]+([^;]+);[ \\t]*(?://[^\\r\\n]*)?"
     );
+    private static final Pattern FRAGMENT_DATA = Pattern.compile("\\bgl_FragData\\s*\\[\\s*(\\d+)\\s*]");
 
     private LegacyFullscreenTransformer() {
     }
@@ -29,6 +32,11 @@ public final class LegacyFullscreenTransformer {
         transformed = transformed.replaceAll("\\btexture2DLod\\b", "textureLod");
         transformed = transformed.replaceAll("\\btexture2D\\b", "texture");
         transformed = transformed.replaceAll("\\btextureCube\\b", "texture");
+
+        FragmentOutputs fragmentOutputs = stage == ShaderStage.FRAGMENT
+                ? replaceFragmentOutputs(transformed)
+                : new FragmentOutputs(transformed, Set.of());
+        transformed = fragmentOutputs.source();
 
         UniformExtraction uniforms = extractScalarUniforms(transformed);
         transformed = uniforms.source();
@@ -58,8 +66,13 @@ public final class LegacyFullscreenTransformer {
                     #define ftransform() lodeframeFullscreenPosition()
                     """);
         } else {
-            compatibility.append("layout(location = 0) out vec4 lodeframeFragColor;\n");
-            transformed = transformed.replaceAll("\\bgl_FragColor\\b", "lodeframeFragColor");
+            for (int location : fragmentOutputs.locations()) {
+                compatibility.append("layout(location = ")
+                        .append(location)
+                        .append(") out vec4 lodeframeFragData")
+                        .append(location)
+                        .append(";\n");
+            }
         }
 
         Matcher version = VERSION.matcher(transformed);
@@ -93,6 +106,28 @@ public final class LegacyFullscreenTransformer {
         return new UniformExtraction(result.toString(), List.copyOf(declarations));
     }
 
+    private static FragmentOutputs replaceFragmentOutputs(final String source) {
+        Set<Integer> locations = new LinkedHashSet<>();
+        String transformed = source;
+        if (transformed.matches("(?s).*\\bgl_FragColor\\b.*")) {
+            locations.add(0);
+            transformed = transformed.replaceAll("\\bgl_FragColor\\b", "lodeframeFragData0");
+        }
+
+        Matcher matcher = FRAGMENT_DATA.matcher(transformed);
+        StringBuilder result = new StringBuilder(transformed.length());
+        while (matcher.find()) {
+            int location = Integer.parseInt(matcher.group(1));
+            locations.add(location);
+            matcher.appendReplacement(result, "lodeframeFragData" + location);
+        }
+        matcher.appendTail(result);
+        return new FragmentOutputs(result.toString(), Set.copyOf(locations));
+    }
+
     private record UniformExtraction(String source, List<String> declarations) {
+    }
+
+    private record FragmentOutputs(String source, Set<Integer> locations) {
     }
 }
