@@ -79,9 +79,14 @@ public final class ShaderPack implements AutoCloseable {
         return Files.readString(path);
     }
 
-    String readOptional(final String relativePath) throws IOException {
+    public String readOptional(final String relativePath) throws IOException {
         Path path = path(relativePath);
         return Files.isRegularFile(path) ? read(path) : "";
+    }
+
+    public byte[] readOptionalBytes(final String relativePath) throws IOException {
+        Path path = path(relativePath);
+        return Files.isRegularFile(path) ? Files.readAllBytes(path) : new byte[0];
     }
 
     Path resolveInclude(final Path includingFile, final String includePath) throws ShaderPackException {

@@ -2,11 +2,11 @@
 
 Shader-pack compatibility for [Lodeframe](https://github.com/pentaoa/lodeframe), the native Metal renderer for Minecraft: Java Edition on Apple Silicon.
 
-This repository will contain the shader-pack parser, shader translation pipeline, and world-rendering integration needed to run established OptiFine/Iris-format packs on Metal. It is a compatibility implementation for the pack format, not a Metal backend for the Iris mod itself.
+This repository contains the shader-pack parser and legacy GLSL compatibility layer used to run established OptiFine/Iris-format packs through Lodeframe's Metal backend. It implements the pack interface independently rather than embedding the Iris renderer.
 
 ## What works today
 
-The first executable frontend is available. It inspects an OptiFine/Iris-format shader pack directly from a ZIP file or directory and reports the work needed before Metal translation:
+The frontend inspects an OptiFine/Iris-format shader pack directly from a ZIP file or directory and provides:
 
 - dimension and program discovery;
 - vertex, fragment, geometry, compute, and tessellation stage discovery;
@@ -14,8 +14,11 @@ The first executable frontend is available. It inspects an OptiFine/Iris-format 
 - include-cycle and missing-file diagnostics;
 - GLSL version and `DRAWBUFFERS` detection;
 - `shaders.properties` requirements for custom uniforms, images, textures, and conditional programs.
+- legacy GLSL 120/130 normalization for Metal's SPIR-V frontend;
+- Minecraft and Sodium vertex-interface adaptation;
+- Iris render-stage constants, uniform layouts, sampler discovery, and `DRAWBUFFERS` routing.
 
-It does **not** render shader packs yet. This is the input boundary for the GLSL preprocessing, SPIR-V/MSL translation, and Metal pass scheduler that follow.
+The Lodeframe runtime now consumes this output for terrain, water, sky, entities, hand rendering, particles, weather, directional shadows, composite passes, and final output. Support is still pre-alpha and rendered-output compatibility varies by pack.
 
 ## Inspect a pack
 
@@ -30,7 +33,7 @@ Local shader packs are test inputs only. They are excluded from version control 
 
 ## Real-pack baseline
 
-The frontend is exercised locally against BSL 10.1.3. The current baseline resolves all 179 shader-stage entries and 2,263 include edges across 91 programs without diagnostics. That pack establishes the first implementation targets: legacy GLSL 120/130 semantics, `DRAWBUFFERS` routing, compute stages, custom uniforms/images/textures, and conditional pass scheduling.
+The frontend is exercised locally against BSL 10.1.3. It resolves all 179 shader-stage entries and 2,263 include edges across 91 programs without diagnostics, and every program currently selected by the runtime passes an offline GLSL-to-SPIR-V frontend check. BSL remains the first rendered-output conformance target.
 
 ## Direction
 
@@ -38,10 +41,10 @@ Lodeframe Shaders implements compatibility with the established pack format inde
 
 The next milestones are:
 
-1. preprocess OptiFine/Iris macros and legacy GLSL interfaces into explicit stage inputs and outputs;
-2. compile the normalized GLSL through SPIR-V into Metal-compatible shaders;
-3. turn pack programs and properties into a Metal render-pass graph;
-4. integrate the resulting pipeline with Lodeframe and validate rendered output.
+1. complete BSL rendered-output conformance and visual regression coverage;
+2. extend block-entity, cloud, and less common render-stage coverage;
+3. add remaining pack features such as compute/image stages where Metal equivalents are available;
+4. broaden the real-pack compatibility suite without weakening Metal correctness or performance.
 
 ## Project family
 
