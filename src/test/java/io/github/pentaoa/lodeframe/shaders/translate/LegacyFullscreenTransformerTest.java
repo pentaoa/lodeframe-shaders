@@ -31,7 +31,7 @@ final class LegacyFullscreenTransformerTest {
 
     @Test
     void transformsLegacyFragmentOutputsFunctionsAndScalarUniforms() {
-        String transformed = LegacyFullscreenTransformer.transform(ShaderStage.FRAGMENT, """
+        LegacyFullscreenTransformer.TransformedShader result = LegacyFullscreenTransformer.transformDetailed(ShaderStage.FRAGMENT, """
                 #version 120
                 #extension GL_ARB_shader_texture_lod : enable
                 varying vec2 texCoord;
@@ -42,11 +42,14 @@ final class LegacyFullscreenTransformerTest {
                     gl_FragColor = texture2DLod(colortex1, texCoord, 0.0);
                 }
                 """);
+        String transformed = result.source();
 
         assertTrue(transformed.contains("in vec2 texCoord"));
         assertTrue(transformed.contains("layout(location = 0) out vec4 lodeframeFragData0"));
-        assertTrue(transformed.contains("layout(std140) uniform LodeframeFullscreenUniforms"));
-        assertTrue(transformed.contains("float viewWidth, viewHeight;"));
+        assertTrue(transformed.contains("layout(std140) uniform LodeframeFragmentUniforms"));
+        assertTrue(transformed.contains("float viewWidth;"));
+        assertTrue(transformed.contains("float viewHeight;"));
+        assertTrue(result.uniforms().contains(new LegacyFullscreenTransformer.UniformField("float", "viewWidth")));
         assertTrue(transformed.contains("textureLod(colortex1"));
         assertFalse(transformed.contains("GL_ARB_shader_texture_lod"));
         assertFalse(transformed.contains("gl_FragColor"));

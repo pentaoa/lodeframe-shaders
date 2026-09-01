@@ -14,7 +14,7 @@ public final class LegacyFullscreenTransformer {
     private static final Pattern LEGACY_EXTENSION = Pattern.compile("(?m)^[ \\t]*#[ \\t]*extension[ \\t]+GL_ARB_shader_texture_lod[^\\r\\n]*(?:\\R)?");
     private static final Pattern VARYING = Pattern.compile("\\bvarying\\b");
     private static final Pattern SCALAR_UNIFORM = Pattern.compile(
-            "(?m)^[ \\t]*uniform[ \\t]+(float|int|bool|vec[234]|ivec[234]|uvec[234]|mat[234])[ \\t]+([^;]+);[ \\t]*(?://[^\\r\\n]*)?"
+            "(?m)^[ \\t]*uniform[ \\t]+(float|int|uint|bool|vec[234]|ivec[234]|uvec[234]|mat[234])[ \\t]+([^;]+);[ \\t]*(?://[^\\r\\n]*)?"
     );
     private static final Pattern FRAGMENT_DATA = Pattern.compile("\\bgl_FragData\\s*\\[\\s*(\\d+)\\s*]");
 
@@ -22,6 +22,10 @@ public final class LegacyFullscreenTransformer {
     }
 
     public static String transform(final ShaderStage stage, final String source) {
+        return transformDetailed(stage, source).source();
+    }
+
+    public static TransformedShader transformDetailed(final ShaderStage stage, final String source) {
         if (stage != ShaderStage.VERTEX && stage != ShaderStage.FRAGMENT) {
             throw new IllegalArgumentException("Fullscreen transformation only supports vertex and fragment stages");
         }
@@ -46,10 +50,10 @@ public final class LegacyFullscreenTransformer {
         compatibility.append("#ifndef MC_OS_MAC\n#define MC_OS_MAC\n#endif\n");
         compatibility.append("#ifndef MC_GL_RENDERER_APPLE\n#define MC_GL_RENDERER_APPLE\n#endif\n");
         compatibility.append("#ifndef IS_IRIS\n#define IS_IRIS\n#endif\n");
-        if (!uniforms.declarations().isEmpty()) {
-            compatibility.append("layout(std140) uniform LodeframeFullscreenUniforms {\n");
-            for (String declaration : uniforms.declarations()) {
-                compatibility.append("    ").append(declaration).append(";\n");
+        if (!uniforms.fields().isEmpty()) {
+            compatibility.append("layout(std140) uniform ").append(uniformBlockName(stage)).append(" {\n");
+            for (UniformField field : uniforms.fields()) {
+                compatibility.append("    ").append(field.type()).append(' ').append(field.name()).append(";\n");
             }
             compatibility.append("};\n");
         }
@@ -79,9 +83,18 @@ public final class LegacyFullscreenTransformer {
         if (!version.find()) {
             throw new IllegalArgumentException("Shader source has no #version directive");
         }
-        return transformed.substring(0, version.end())
+        String result = transformed.substring(0, version.end())
                 + compatibility
                 + transformed.substring(version.end());
+        return new TransformedShader(result, uniforms.fields());
+    }
+
+    public static String uniformBlockName(final ShaderStage stage) {
+        return switch (stage) {
+            case VERTEX -> "LodeframeVertexUniforms";
+            case FRAGMENT -> "LodeframeFragmentUniforms";
+            default -> throw new IllegalArgumentException("Fullscreen stages only have vertex and fragment uniform blocks");
+        };
     }
 
     private static String replaceVersion(final String source) {
@@ -95,15 +108,18 @@ public final class LegacyFullscreenTransformer {
     private static UniformExtraction extractScalarUniforms(final String source) {
         Matcher matcher = SCALAR_UNIFORM.matcher(source);
         StringBuilder result = new StringBuilder(source.length());
-        List<String> declarations = new ArrayList<>();
+        List<UniformField> fields = new ArrayList<>();
         int cursor = 0;
         while (matcher.find()) {
             result.append(source, cursor, matcher.start());
-            declarations.add(matcher.group(1) + " " + matcher.group(2).strip());
+            String type = matcher.group(1);
+            for (String name : matcher.group(2).split(",")) {
+                fields.add(new UniformField(type, name.strip()));
+            }
             cursor = matcher.end();
         }
         result.append(source, cursor, source.length());
-        return new UniformExtraction(result.toString(), List.copyOf(declarations));
+        return new UniformExtraction(result.toString(), List.copyOf(fields));
     }
 
     private static FragmentOutputs replaceFragmentOutputs(final String source) {
@@ -125,7 +141,16 @@ public final class LegacyFullscreenTransformer {
         return new FragmentOutputs(result.toString(), Set.copyOf(locations));
     }
 
-    private record UniformExtraction(String source, List<String> declarations) {
+    public record TransformedShader(String source, List<UniformField> uniforms) {
+        public TransformedShader {
+            uniforms = List.copyOf(uniforms);
+        }
+    }
+
+    public record UniformField(String type, String name) {
+    }
+
+    private record UniformExtraction(String source, List<UniformField> fields) {
     }
 
     private record FragmentOutputs(String source, Set<Integer> locations) {
