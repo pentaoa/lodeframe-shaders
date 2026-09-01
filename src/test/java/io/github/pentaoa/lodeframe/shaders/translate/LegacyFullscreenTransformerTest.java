@@ -1,0 +1,59 @@
+package io.github.pentaoa.lodeframe.shaders.translate;
+
+import io.github.pentaoa.lodeframe.shaders.pack.ShaderStage;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+final class LegacyFullscreenTransformerTest {
+    @Test
+    void transformsLegacyVertexInterfaceIntoVertexIdFullscreenTriangle() {
+        String transformed = LegacyFullscreenTransformer.transform(ShaderStage.VERTEX, """
+                #version 120
+                varying vec2 texCoord;
+                void main() {
+                    texCoord = gl_MultiTexCoord0.xy;
+                    gl_Position = ftransform();
+                }
+                """);
+
+        assertTrue(transformed.startsWith("#version 330 core"));
+        assertTrue(transformed.contains("out vec2 texCoord"));
+        assertTrue(transformed.contains("gl_VertexID"));
+        assertTrue(transformed.contains("#define gl_MultiTexCoord0"));
+        assertTrue(transformed.contains("#define ftransform()"));
+    }
+
+    @Test
+    void transformsLegacyFragmentOutputsFunctionsAndScalarUniforms() {
+        String transformed = LegacyFullscreenTransformer.transform(ShaderStage.FRAGMENT, """
+                #version 120
+                #extension GL_ARB_shader_texture_lod : enable
+                varying vec2 texCoord;
+                uniform sampler2D colortex1;
+                uniform float viewWidth, viewHeight;
+                uniform float aspectRatio, frameTimeCounter;
+                void main() {
+                    gl_FragColor = texture2DLod(colortex1, texCoord, 0.0);
+                }
+                """);
+
+        assertTrue(transformed.contains("in vec2 texCoord"));
+        assertTrue(transformed.contains("layout(location = 0) out vec4 lodeframeFragColor"));
+        assertTrue(transformed.contains("layout(std140) uniform LodeframeFullscreenUniforms"));
+        assertTrue(transformed.contains("float viewWidth, viewHeight;"));
+        assertTrue(transformed.contains("textureLod(colortex1"));
+        assertFalse(transformed.contains("GL_ARB_shader_texture_lod"));
+        assertFalse(transformed.contains("gl_FragColor"));
+    }
+
+    @Test
+    void rejectsUnsupportedStages() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> LegacyFullscreenTransformer.transform(ShaderStage.COMPUTE, "#version 430\n")
+        );
+    }
+}

@@ -51,6 +51,10 @@ public final class ShaderPack implements AutoCloseable {
         return source;
     }
 
+    public ResolvedShader resolve(final String relativePath) throws IOException, ShaderPackException {
+        return new ShaderIncludeResolver(this).resolve(path(relativePath));
+    }
+
     Path shadersRoot() {
         return shadersRoot;
     }
