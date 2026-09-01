@@ -1,0 +1,37 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Build and test
+        run: ./gradlew build --no-daemon
+
+      - name: Upload analyzer JAR
+        uses: actions/upload-artifact@v7
+        with:
+          name: lodeframe-shaders-${{ github.sha }}
+          path: build/libs/lodeframe-shaders-*.jar
+          if-no-files-found: error
