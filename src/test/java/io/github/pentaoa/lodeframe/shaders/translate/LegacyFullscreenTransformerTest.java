@@ -20,6 +20,9 @@ final class LegacyFullscreenTransformerTest {
                 """);
 
         assertTrue(transformed.startsWith("#version 330 core"));
+        assertTrue(transformed.contains("#define MC_VERSION 12602"));
+        assertTrue(transformed.contains("#define MC_GL_RENDERER_APPLE"));
+        assertTrue(transformed.contains("#define IS_IRIS"));
         assertTrue(transformed.contains("out vec2 texCoord"));
         assertTrue(transformed.contains("gl_VertexID"));
         assertTrue(transformed.contains("#define gl_MultiTexCoord0"));

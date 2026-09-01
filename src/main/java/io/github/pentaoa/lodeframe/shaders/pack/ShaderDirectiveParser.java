@@ -6,6 +6,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -28,6 +29,10 @@ public final class ShaderDirectiveParser {
     );
     private static final Pattern BUFFER_MIPMAP = Pattern.compile(
             "(?m)^[ \\t]*const[ \\t]+bool[ \\t]+(colortex\\d+)MipmapEnabled[ \\t]*=[ \\t]*true[ \\t]*;"
+    );
+    private static final String RENDER_TARGET_MARKER_PREFIX = "lodeframeRenderTargetsMarker";
+    private static final Pattern RENDER_TARGET_MARKER = Pattern.compile(
+            "(?m)^[ \\t]*const[ \\t]+int[ \\t]+" + RENDER_TARGET_MARKER_PREFIX + "(\\d+)[ \\t]*=[ \\t]*0[ \\t]*;[ \\t]*(?:\\R|$)"
     );
 
     private ShaderDirectiveParser() {
@@ -59,6 +64,29 @@ public final class ShaderDirectiveParser {
             mipmapped.add(bufferIndex(mipmapMatcher.group(1)));
         }
         return new ShaderDirectives(renderTargets, formats, clears, clearColors, mipmapped);
+    }
+
+    public static InstrumentedDirectives instrumentRenderTargets(final String source) {
+        Matcher matcher = RENDER_TARGETS.matcher(source);
+        StringBuilder instrumented = new StringBuilder(source.length());
+        List<ShaderDirectives.RenderTargets> candidates = new ArrayList<>();
+        while (matcher.find()) {
+            ShaderDirectives.RenderTargetsKind kind = ShaderDirectives.RenderTargetsKind.valueOf(
+                    matcher.group(1).toUpperCase(Locale.ROOT)
+            );
+            String value = matcher.group(2).strip();
+            List<Integer> buffers = kind == ShaderDirectives.RenderTargetsKind.DRAWBUFFERS
+                    ? parseDrawBuffers(value)
+                    : parseRenderTargetList(value);
+            int index = candidates.size();
+            candidates.add(new ShaderDirectives.RenderTargets(kind, buffers, matcher.start()));
+            matcher.appendReplacement(
+                    instrumented,
+                    Matcher.quoteReplacement("const int " + RENDER_TARGET_MARKER_PREFIX + index + " = 0;")
+            );
+        }
+        matcher.appendTail(instrumented);
+        return new InstrumentedDirectives(instrumented.toString(), candidates);
     }
 
     public static int bufferIndex(final String name) {
@@ -148,5 +176,33 @@ public final class ShaderDirectiveParser {
             literal = literal.substring(0, literal.length() - 1);
         }
         return Float.parseFloat(literal);
+    }
+
+    public record InstrumentedDirectives(String source, List<ShaderDirectives.RenderTargets> candidates) {
+        public InstrumentedDirectives {
+            candidates = List.copyOf(candidates);
+        }
+
+        public ResolvedDirectives resolve(final String preprocessedSource) {
+            Matcher matcher = RENDER_TARGET_MARKER.matcher(preprocessedSource);
+            StringBuilder cleaned = new StringBuilder(preprocessedSource.length());
+            ShaderDirectives.RenderTargets active = null;
+            while (matcher.find()) {
+                int index = Integer.parseInt(matcher.group(1));
+                if (index < 0 || index >= this.candidates.size()) {
+                    throw new IllegalArgumentException("Unknown render-target marker index: " + index);
+                }
+                if (active != null) {
+                    throw new IllegalArgumentException("More than one render-target directive is active after preprocessing");
+                }
+                active = this.candidates.get(index);
+                matcher.appendReplacement(cleaned, "");
+            }
+            matcher.appendTail(cleaned);
+            return new ResolvedDirectives(cleaned.toString(), Optional.ofNullable(active));
+        }
+    }
+
+    public record ResolvedDirectives(String source, Optional<ShaderDirectives.RenderTargets> renderTargets) {
     }
 }

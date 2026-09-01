@@ -34,8 +34,10 @@ public final class LegacyFullscreenTransformer {
         transformed = uniforms.source();
 
         StringBuilder compatibility = new StringBuilder();
-        compatibility.append("\n#ifndef MC_VERSION\n#define MC_VERSION 2602\n#endif\n");
+        compatibility.append("\n#ifndef MC_VERSION\n#define MC_VERSION 12602\n#endif\n");
         compatibility.append("#ifndef MC_OS_MAC\n#define MC_OS_MAC\n#endif\n");
+        compatibility.append("#ifndef MC_GL_RENDERER_APPLE\n#define MC_GL_RENDERER_APPLE\n#endif\n");
+        compatibility.append("#ifndef IS_IRIS\n#define IS_IRIS\n#endif\n");
         if (!uniforms.declarations().isEmpty()) {
             compatibility.append("layout(std140) uniform LodeframeFullscreenUniforms {\n");
             for (String declaration : uniforms.declarations()) {

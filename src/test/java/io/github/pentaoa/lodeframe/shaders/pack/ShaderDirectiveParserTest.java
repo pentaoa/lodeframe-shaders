@@ -8,6 +8,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class ShaderDirectiveParserTest {
     @Test
@@ -43,5 +44,26 @@ final class ShaderDirectiveParserTest {
         assertEquals(new ShaderDirectives.ClearColor(0.0F, 0.25F, -1.0F, 1.0F), directives.bufferClearColors().get(2));
         assertEquals(Set.of(2), directives.mipmappedBuffers());
         assertFalse(directives.bufferFormats().containsKey(1));
+    }
+
+    @Test
+    void instrumentsCandidatesSoTheGlslPreprocessorCanSelectTheActiveDirective() {
+        ShaderDirectiveParser.InstrumentedDirectives instrumented = ShaderDirectiveParser.instrumentRenderTargets("""
+                #if FEATURE
+                /* DRAWBUFFERS:0195 */
+                #else
+                /* RENDERTARGETS: 0, 1, 5 */
+                #endif
+                """);
+
+        assertTrue(instrumented.source().contains("lodeframeRenderTargetsMarker0"));
+        assertTrue(instrumented.source().contains("lodeframeRenderTargetsMarker1"));
+        ShaderDirectiveParser.ResolvedDirectives resolved = instrumented.resolve("""
+                const int lodeframeRenderTargetsMarker1 = 0;
+                void main() {}
+                """);
+
+        assertEquals(List.of(0, 1, 5), resolved.renderTargets().orElseThrow().buffers());
+        assertFalse(resolved.source().contains("lodeframeRenderTargetsMarker"));
     }
 }
